@@ -93,7 +93,7 @@ def main():
         fltwfs.append(waveform)
 
         if args.noeachwf: 
-            h2 = TH1D(f'w{i}','Waveform{i};Sampling Bin;ADC count',nsamples,0,nsamples)
+            h2 = TH1D(f'w{i}','Waveform{i};Sampling Bin;ADC count [LSB]',nsamples,0,nsamples)
             for j in range(len(waveform)):
                 h2.Fill(j,waveform[j])
             subdir.cd()
@@ -118,10 +118,11 @@ def main():
     hopt.Fit('gausn',"","",-20,20)
         
     fped = hopt.GetFunction('gausn')
-    xtrans = hopt.GetFunction('gausn').GetParameter(1)
-    pmean = -1. * np.log(hopt.GetFunction('gausn').GetParameter(0)/2./rebin/hopt.GetEntries()) #0.3 # poisson mean
+    ped, pederr = get3Parameters(fped)
+    xtrans = ped[1]
+    pmean = -1. * np.log(ped[0]/2./rebin/hopt.GetEntries()) #0.3 # poisson mean
     qreso = 0.3 # charge resolution 
-    qdaq = hopt.GetFunction('gausn').GetParameter(2) #0.07 # DAQ resolution 
+    qdaq = ped[2] #0.07 # DAQ resolution 
     loss1 = 0.07 # 7% loss @ 1st dynode
 
     fitmax = 380
@@ -140,22 +141,21 @@ def main():
         lowlimit = est1mean/2.
     hopt.Fit('gaus',"","",lowlimit,est1mean*1.5)
     fspe = hopt.GetFunction('gaus')
-    qreso = np.sqrt(hopt.GetFunction('gaus').GetParameter(2)**2-qdaq**2)/(hopt.GetFunction('gaus').GetParameter(1)-xtrans)
+    spe, speerr = get3Parameters(fspe)
+    qreso = np.sqrt(spe[2]**2-qdaq**2)/(spe[1]-xtrans)
 
     k = 0.75
-    mpe = 3 # number of p.e. 
-    a = [16.8, 4, 5, 3.33, 1.67, 1, 1.2, 1.5, 2.2, 3, 2.4] # R5912-100 Divider list 
-    anpy = np.array(a) 
-    
-    Total = np.sum(anpy) #16.8 + 4 + 5 + 3.33 + 1.67 + 1 + 1.2 + 1.5 + 2.2 + 3 + 2.4 # R5912-100 Divider
-    Rnpy = anpy/Total # Divider Ratio 
+    mpe = args.mpe # number of p.e. 
+    a = np.array([16.8, 4, 5, 3.33, 1.67, 1, 1.2, 1.5, 2.2, 3, 2.4]) # R5912-100 Divider list 
+    Total = np.sum(a)
+    R = a/Total # each divider Ratio 
 
-    R2_10 = np.prod(Rnpy[1:10])#4 * 5 * 3.33 * 1.67 * 1 * 1.2 * 1.5 * 2.2 * 3 / Total**9
-    A = 1./ (np.prod(Rnpy[0:10])**(k/10.))
-    gain1 = A * Rnpy[0]**k
-    rgain1  = Rnpy[0]/np.prod(Rnpy[0:10]**0.1)
-    rgain2_ = R2_10/(np.prod(Rnpy[0:10])**0.9)
-    rgain3_ = np.prod(Rnpy[2:10])/(np.prod(Rnpy[0:10])**0.8)
+    R2_10 = np.prod(R[1:10])
+    A = 1./ (np.prod(R[0:10])**(k/10.))
+    gain1 = A * R[0]**k
+    rgain1  = R[0]/np.prod(R[0:10]**0.1)
+    rgain2_ = R2_10/(np.prod(R[0:10])**0.9)
+    rgain3_ = np.prod(R[2:10])/(np.prod(R[0:10])**0.8)
 
     R5912Model = "0"
     for i in range(mpe+1): 
@@ -168,7 +168,7 @@ def main():
     f4.SetLineColor(2)
     f4.SetNpx(500)
 
-    preQMean = hopt.GetFunction('gaus').GetParameter(1)
+    preQMean = spe[1]
 
     f4.SetParameter(1,preQMean)
     f4.SetParameter(2,loss1)
@@ -212,19 +212,19 @@ def main():
     hPars.SetBinError(4,0) # no error
     hPars.GetXaxis().SetBinLabel(5,"Poisson Mean")
     hPars.SetBinContent(5,pmean)
-    hPars.SetBinError(5, 1./(fped.GetParameter(0))*fped.GetParError(0))
+    hPars.SetBinError(5, 1./ped[0]*pederr[0])
     hPars.GetXaxis().SetBinLabel(6,"Pedestal Mean [LSB]")
     hPars.SetBinContent(6,xtrans)
-    hPars.SetBinError(6, fped.GetParError(1))
+    hPars.SetBinError(6, pederr[1])
     hPars.GetXaxis().SetBinLabel(7,"Pedestal Sigma [LSB]")
     hPars.SetBinContent(7,qdaq)
-    hPars.SetBinError(7, fped.GetParError(2))
+    hPars.SetBinError(7, pederr[2])
     hPars.GetXaxis().SetBinLabel(8,"Total Gain [10^{7}]")
     hPars.SetBinContent(8,f4.GetParameter(1)*Mbcalib/Mbimped/Mbspfq/elecQ/1.e7)
     hPars.SetBinError(8,f4.GetParError(1)*Mbcalib/Mbimped/Mbspfq/elecQ/1.e7)
     hPars.GetXaxis().SetBinLabel(9,"Charge Resolution [LSB]")
     hPars.SetBinContent(9,qreso)
-    hPars.SetBinError(9,np.sqrt(fspe.GetParError(2)**2-fped.GetParError(2)**2)/(fspe.GetParameter(1)-xtrans))
+    hPars.SetBinError(9,np.sqrt(speerr[2]**2-pederr[2]**2)/(spe[1]-xtrans))
     hPars.GetXaxis().SetBinLabel(10,"Peak to Valley Ratio")
     hPars.SetBinContent(10,peak/valley)
     hPars.GetXaxis().SetBinLabel(11,"1st Dynode Loss Probability")
@@ -250,7 +250,7 @@ def main():
     rp.GetLowerRefYaxis().SetTitle("Data/Fit")
     rp.GetUpperRefYaxis().SetTitle("Entries")
     rp.GetUpperRefYaxis().SetRangeUser(0,peak*1.5)
-    rp.GetUpperRefXaxis().SetRangeUser(-50,1900)
+    rp.GetUpperRefXaxis().SetRangeUser(-50,args.xmax)
     rp.SetSeparationMargin(0.01)
     rp.SetRightMargin(0.04)
     rp.SetLeftMargin(0.12)
@@ -290,6 +290,14 @@ def NphotonDist(Num, PoisMean, QMean, QReso, Qdaq, xtrans=0):
             #R5912Model += f'+[0]*[2]/2*{comb(i,j)}*pow((1-[2]),{j})*pow([2],{i-j})*{NphotonDist(i,pmean,Qmean,qreso,qdaq,xtrans)}'
     '''
 
+def get3Parameters(f): 
+    par = []
+    parerr = []
+    for i in range(3): 
+        par.append(f.GetParameter(i))
+        parerr.append(f.GetParError(i))
+    return par, parerr
+
 def parser():
     argparser = ArgumentParser()
     argparser.add_argument('filename', help='Input file name.')
@@ -310,12 +318,13 @@ def parser():
     argparser.add_argument('-k',type=float,default=None)
     argparser.add_argument('--rebin',type=int,default=1)
     argparser.add_argument('--ofile',type=str,default="")
+    argparser.add_argument('--xmax',type=float,default=1400)
+    argparser.add_argument('--mpe',type=int,default=4)
 
     return argparser.parse_args()
 
 
 if __name__ == '__main__':
     gROOT.SetStyle("ATLAS")
-
     main()
 
