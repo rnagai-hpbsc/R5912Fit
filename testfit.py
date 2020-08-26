@@ -24,11 +24,14 @@ def main():
     times = data.col('time')
     waveforms = data.col('waveform')
 
-    try: 
-        timestamps = data.col('timestamp') 
-    except: 
-        print("there is no timestamp in this file.")
-        timestamps = np.arange(len(waveforms))
+    #try: 
+    #    timestamps = data.col('timestamp') 
+    #except: 
+    #    print("there is no timestamp in this file.")
+    #    timestamps = np.arange(len(waveforms))
+    timestamps = getDataCol('timestamp',data)
+    hv = getDataCol('hv',data)
+    temp = getDataCol('temperature',data)
 
     nsamples = len(waveforms[0])
     fq = np.linspace(0,240,nsamples)
@@ -297,6 +300,13 @@ def get3Parameters(f):
         par.append(f.GetParameter(i))
         parerr.append(f.GetParError(i))
     return par, parerr
+
+def getDataCol(colname, hdfnode): 
+    try: 
+        coldata = hdfnode.col(colname)
+    except: 
+        coldata = np.array([])
+    return coldata
 
 def parser():
     argparser = ArgumentParser()
