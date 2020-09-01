@@ -14,8 +14,8 @@ def main():
 
     filename = args.filename
 
-    os.system('mkdir -p rootfiles')
-    os.system('mkdir -p plots/paper')
+    os.system('mkdir -p rootfiles/prev')
+    os.system('mkdir -p plots/prev')
 
     f = tables.open_file(filename)
 
@@ -37,7 +37,7 @@ def main():
 
     ofilename = filename.split('/')[len(filename.split('/'))-1].split('.h')[0] + args.ofile
 
-    of = TFile(f'rootfiles/{ofilename}.root',"RECREATE")
+    of = TFile(f'rootfiles/prev/{ofilename}.root',"RECREATE")
 
     h     = TH1D('qdist','qdist;ADC count [LSB];Entry',2500,-100,4900)
     hmaxbin  = TH1D('maxbin','maxbin;ADC count [LSB];Entry', nsamples, 0, nsamples)
@@ -201,27 +201,31 @@ def main():
             NPE += NPE_j
             R5912Model += NPE_j
         NPEs.append(TF1(f'f_{i}PE',NPE,-100,1900))
-
-    f4 = TF1("R5912Model",R5912Model,-100.,1900.)
+    f4 = TF1("R5912Model",f"[0]*(TMath::PoissonI(0,[3])*TMath::Gaus(x,{ped[1]},{ped[2]},1)+TMath::PoissonI(1,[3])*TMath::Gaus(x,[4],{spe[2]},1)+TMath::PoissonI(2,[3])*TMath::Gaus(x,2*[4],{2*spe[2]},1)+TMath::PoissonI(3,[3])*TMath::Gaus(x,3*[4],{3*spe[2]},1))+exp([1]-[2]*x)*TMath::Freq(x)",-100.,1900.)
     f4.SetLineColor(2)
     f4.SetNpx(500)
 
     preQMean = spe[1]
 
-    f4.SetParameter(1,preQMean)
-    f4.SetParameter(2,loss1)
-    f4.SetParLimits(2,0,0.5)
-    f4.SetParameter(4,pmean)
+    f4.SetParameter(0,ped[0])
+    f4.SetParameter(1,6)
+    f4.SetParameter(2,1)
+    f4.SetParameter(3,pmean)
+    f4.SetParameter(4,spe[1])
+
+    f4.SetParLimits(1,1,1)
+    f4.SetParLimits(2,0,10)
+
     if args.poisfix:
         f4.SetParLimits(4,1,1)
     if args.k: 
         f4.SetParameter(3,float(args.k))
         f4.SetParLimits(3,0.75,0.75)
-    else: 
-        f4.SetParameter(3,0.75)
-        f4.SetParLimits(3,0.5,0.9)
+    #else: 
+    #    f4.SetParameter(3,0.75)
+    #    f4.SetParLimits(3,0.5,0.9)
     hopt.Fit("R5912Model","","",-100,1900)
-    pmtpar, pmterr = get3Parameters(f4,5)
+    #pmtpar, pmterr = get3Parameters(f4,5)
 
     hsubt.SetName("hsubt")
     hsubt.SetTitle("hsubt;ADC count [LSB];Data - Fit")
@@ -239,45 +243,6 @@ def main():
     peakx   = f4.GetMaximumX(valleyx,1900)
     print(f'Peak:{peak:.1f} @ {peakx:.1f}, Valley:{valley:.1f} @ {valleyx:.1f}, P/V:{peak/valley:.3f}')
 
-    hPars = TH1F("FitPars","FitPars",12,0,12)
-    hPars.GetXaxis().SetBinLabel(1,"MB calib [mV/LSB]")
-    hPars.SetBinContent(1,Mbcalib*1.e3)
-    hPars.SetBinError(1,Mbcalib*10) # 1%
-    hPars.GetXaxis().SetBinLabel(2,"MB Sampling Freq [MHz]")
-    hPars.SetBinContent(2,Mbspfq/1.e6)
-    hPars.SetBinError(2,0) # no error
-    hPars.GetXaxis().SetBinLabel(3,"MB impedance [#Omega]")
-    hPars.SetBinContent(3,Mbimped)
-    hPars.SetBinError(3,5) # 10% 
-    hPars.GetXaxis().SetBinLabel(4,"Rebin")
-    hPars.SetBinContent(4,rebin)
-    hPars.SetBinError(4,0) # no error
-    hPars.GetXaxis().SetBinLabel(5,"Poisson Mean")
-    hPars.SetBinContent(5,pmean)
-    hPars.SetBinError(5, 1./ped[0]*pederr[0])
-    hPars.GetXaxis().SetBinLabel(6,"Pedestal Mean [LSB]")
-    hPars.SetBinContent(6,xtrans)
-    hPars.SetBinError(6, pederr[1])
-    hPars.GetXaxis().SetBinLabel(7,"Pedestal Sigma [LSB]")
-    hPars.SetBinContent(7,qdaq)
-    hPars.SetBinError(7, pederr[2])
-    hPars.GetXaxis().SetBinLabel(8,"Total Gain [10^{7}]")
-    hPars.SetBinContent(8,f4.GetParameter(1)*Mbcalib/Mbimped/Mbspfq/elecQ/1.e7)
-    hPars.SetBinError(8,f4.GetParError(1)*Mbcalib/Mbimped/Mbspfq/elecQ/1.e7)
-    hPars.GetXaxis().SetBinLabel(9,"Charge Resolution [LSB]")
-    hPars.SetBinContent(9,qreso)
-    hPars.SetBinError(9,np.sqrt(speerr[2]**2-pederr[2]**2)/(spe[1]-xtrans))
-    hPars.GetXaxis().SetBinLabel(10,"Peak to Valley Ratio")
-    hPars.SetBinContent(10,peak/valley)
-    hPars.GetXaxis().SetBinLabel(11,"1st Dynode Loss Probability")
-    hPars.SetBinContent(11,f4.GetParameter(2))
-    hPars.SetBinError(11,f4.GetParError(2))
-    hPars.GetXaxis().SetBinLabel(12,"Slope Constant of Gain Curve") 
-    hPars.SetBinContent(12,f4.GetParameter(3))
-    hPars.SetBinError(12,f4.GetParError(3))
-
-    hPars.Write()
-
     c = TCanvas("c1","c1",800,600)
     c.Draw()
     hopt.SetMarkerStyle(20)
@@ -289,46 +254,35 @@ def main():
     leg = TLegend(.7,.7,.9,.9)
     leg.AddEntry(hopt,"Data","PE")
     leg.AddEntry(f4,"Fit","L")
-    for i in range(mpe+1): 
-        NPEs[i].SetParameters(pmtpar[0],pmtpar[1],pmtpar[2],pmtpar[3],pmtpar[4])
-        NPEs[i].SetLineStyle(2+i)
-        NPEs[i].SetLineColor(kAzure+i)
-        NPEs[i].Draw("same")
-        leg.AddEntry(NPEs[i],f"{i}PE contribution","L")
+    fped.SetLineStyle(2)
+    fped.SetLineColor(kAzure)
+    fped.Draw("same")
+    fspe.SetLineStyle(3)
+    fspe.SetLineColor(kAzure+1)
+    fspe.Draw("same")
+    f2pe = TF1("f2pe",f"[0]*TMath::PoissonI(2,{f4.GetParameter(3)})*TMath::Gaus(x,{2*spe[1]},{2*spe[2]},1)",-100,1900)
+    f2pe.SetParameter(0,f4.GetParameter(0))
+    f2pe.SetLineStyle(4)
+    f2pe.SetLineColor(kAzure+2)
+    f2pe.Draw("same")
+    fslp = TF1("fslp",f"exp([1]-[2]*x)*TMath::Freq(x)",-100,1900)
+    fslp.SetParameters(f4.GetParameter(0),f4.GetParameter(1),f4.GetParameter(2))
+    fslp.SetLineStyle(5)
+    fslp.SetLineColor(kAzure+3)
+    fslp.Draw("same")
+    leg.AddEntry(fped,"0PE contribution","L")
+    leg.AddEntry(fspe,"1PE contribution","L")
+    leg.AddEntry(f2pe,"2PE contribution","L")
+    leg.AddEntry(fslp,"Exp contribution","L")
+    #for i in range(mpe+1): 
+    #    NPEs[i].SetParameters(pmtpar[0],pmtpar[1],pmtpar[2],pmtpar[3],pmtpar[4])
+    #    NPEs[i].SetLineStyle(2+i)
+    #    NPEs[i].SetLineColor(kAzure+i)
+    #    NPEs[i].Draw("same")
+    #    leg.AddEntry(NPEs[i],f"{i}PE contribution","L")
     leg.Draw()
-    c.SaveAs(f"plots/paper/{ofilename}.pdf")
+    c.SaveAs(f"plots/prev/{ofilename}.pdf")
 
-
-    c = TCanvas("c2","c2",1000,800)
-    c.Draw()
-    rp = TRatioPlot(hopt)
-    rp.SetH1DrawOpt("PE")
-    rp.SetFitDrawOpt("L")
-    rp.SetGraphDrawOpt("PE")
-    rp.Draw()
-    rp.GetLowerRefYaxis().SetTitle("Data/Fit")
-    rp.GetUpperRefYaxis().SetTitle("Entries")
-    rp.GetUpperRefYaxis().SetRangeUser(0,peak*1.5)
-    rp.GetUpperRefXaxis().SetRangeUser(-50,args.xmax)
-    rp.SetSeparationMargin(0.01)
-    rp.SetRightMargin(0.04)
-    rp.SetLeftMargin(0.12)
-    rp.SetUpTopMargin(0.05)
-    rp.SetLowBottomMargin(0.4)
-    rp.GetLowerRefXaxis().SetTitleOffset(1.2)
-    rp.GetLowerRefYaxis().SetTitleOffset(1.2)
-    rp.GetUpperRefYaxis().SetTitleOffset(1.2)
-    rp.GetLowerRefXaxis().SetTitleSize(0.04)
-    rp.GetLowerRefYaxis().SetTitleSize(0.04)
-    rp.GetUpperRefYaxis().SetTitleSize(0.04)
-    rp.GetLowerRefXaxis().SetLabelSize(0.04)
-    rp.GetLowerRefYaxis().SetLabelSize(0.04)
-    rp.GetUpperRefYaxis().SetLabelSize(0.04)
-    c.SetGrid()
-    c.Update()
-    c.SaveAs(f"plots/ratiotest_{ofilename}.pdf")
-
-    c.Write()
     of.Close()
     f.close()
 
