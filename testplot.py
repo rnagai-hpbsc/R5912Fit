@@ -2,14 +2,19 @@ from ROOT import *
 import numpy as np
 from scipy.stats import poisson, norm
 from scipy.special import comb
+from argparse import ArgumentParser
 
 def main(): 
-    pmean = 0.5 # poisson mean
+    args = parser()
+
+    pmean = args.pmean # poisson mean
     qmean = 1 # gain mean 
     qreso = 0.33 # charge resolution 
     qdaq = 0.04 # DAQ resolution 
 
-    mpe = 4 # number of p.e. 
+    mpe = args.mpe # number of p.e. 
+
+    maxrange = args.pmean * 100.
 
     idealfunc = ""
     for i in range(mpe+1): 
@@ -17,7 +22,7 @@ def main():
             idealfunc += "+"
         idealfunc += NphotonDist(i,pmean,i*qmean,i*qreso,qdaq)
 
-    f1 = TF1("idealdist",idealfunc,-1.,10.)
+    f1 = TF1("idealdist",idealfunc,-1.,maxrange)
     f1.SetNpx(1000)
 
     gain1 = 1.5 # gain @ 1st dynode 
@@ -30,7 +35,7 @@ def main():
             TwoDynodeModel += "+"
         TwoDynodeModel += f'(1-{loss1})*{NphotonDist(i,pmean,i*gain1*gain2,i*qreso,qdaq)}+{loss1}*{NphotonDist(i,pmean,i*gain2,i*qreso,qdaq)}'
 
-    f2 = TF1("TwoDynodeModel",TwoDynodeModel,-1.,10.)
+    f2 = TF1("TwoDynodeModel",TwoDynodeModel,-1.,maxrange)
     f2.SetNpx(1000)
 
     a = np.array([16.8, 4, 5, 3.33, 1.67, 1, 1.2, 1.5, 2.2, 3, 2.4]) # R5912-100 Divider
@@ -54,7 +59,7 @@ def main():
         R5912Simple += f'(1-{loss1})*{NphotonDist(i,pmean,i*gain1*gain2_10,i*qreso,qdaq)}+{loss1}*{NphotonDist(i,pmean,i*gain2_10,i*qreso,qdaq)}'
 
 
-    f3 = TF1("R5912Simple",R5912Simple,-1.,10.)
+    f3 = TF1("R5912Simple",R5912Simple,-1.,maxrange)
     f3.SetNpx(1000)
 
     R5912Model = "0"
@@ -64,7 +69,7 @@ def main():
 
     print(R5912Model)
 
-    f4 = TF1("R5912Model",R5912Model,-1.,10.)
+    f4 = TF1("R5912Model",R5912Model,-1.,maxrange)
     f4.SetNpx(1000)
 
     g1 = gain1 
@@ -76,7 +81,7 @@ def main():
             for l in range(i-j+1): 
                 R5912ModelN2 += f'+{comb(i,j)*((1-loss1)**j)*(loss1**(i-j))*comb(i-j,l)*((1-loss1)**l)*(loss1**(i-j-l))}*{NphotonDist(i,pmean,j*g1*g2*g3_10+l*g2*g3_10+(i-j-l)*g3_10,qreso,qdaq)}'
 
-    f5 = TF1("R5912_N2",R5912ModelN2,-1.,10.)
+    f5 = TF1("R5912_N2",R5912ModelN2,-1.,maxrange)
     f5.SetNpx(1000)
 
     loss2 = 0.05
@@ -86,7 +91,7 @@ def main():
             for l in range(i-j+1): 
                 R5912ModelN2_2 += f'+{(1-loss2)*comb(i,j)*((1-loss1)**j)*(loss1**(i-j))*comb(i-j,l)*((1-loss2)**l)*(loss2**(i-j-l))}*{NphotonDist(i,pmean,j*g1*(1-loss2)*g2*g3_10+l*g2*g3_10+(i-j-l)*g3_10,qreso,qdaq)}+{loss2*comb(i,j)*((1-loss1)**j)*(loss1**(i-j))*comb(i-j,l)*((1-loss2)**l)*(loss2**(i-j-l))}*{NphotonDist(i,pmean,j*g1*loss2*g3_10+l*g2*g3_10+(i-j-l)*g3_10,qreso,qdaq)}'
 
-    f6 = TF1("R5912_N2_2",R5912ModelN2_2,-1.,10.)
+    f6 = TF1("R5912_N2_2",R5912ModelN2_2,-1.,maxrange)
     f6.SetNpx(1000)
 
     R5912ModelN2_3 = "0"
@@ -94,10 +99,10 @@ def main():
         for j in range(i+1): 
             R5912ModelN2_3 += f'+{(1-loss2)*comb(i,j)*((1-loss1)**j)*(loss1**(i-j))}*{NphotonDist(i,pmean,j*g1*(1-loss2)*g2*g3_10+(i-j)*g2*g3_10,qreso,qdaq)}+{loss2*comb(i,j)*((1-loss1)**j)*(loss1**(i-j))}*{NphotonDist(i,pmean,j*g1*loss2*g3_10+(i-j)*g2*g3_10,qreso,qdaq)}'
 
-    f7 = TF1("R5912_N2_3",R5912ModelN2_3,-1.,10.)
+    f7 = TF1("R5912_N2_3",R5912ModelN2_3,-1.,maxrange)
     f7.SetNpx(1000)
 
-    subtf45 = TF1("subtf45","R5912Model-R5912_N2",-1.,10.)
+    subtf45 = TF1("subtf45","R5912Model-R5912_N2",-1.,maxrange)
     subtf45.SetNpx(1000)
 
     Pedpeak = f1.Eval(0)
@@ -113,13 +118,21 @@ def main():
     subtf45.Write()
     f.Close()
 
+    xmax = 3.5
+    if args.pmean > 2: 
+        xmax = args.pmean*10
+    ymax = Pedpeak*1.1
+    if ymax < f1.GetMaximum()*1.1: 
+        ymax = f1.GetMaximum()*1.1
+    if ymax < f4.GetMaximum()*1.1:
+        ymax = f4.GetMaximum()*1.1
     c = TCanvas("c","c",800,600)
     c.SetGrid()
     c.Draw()
-    h = TH1D("",";#Photo-Electrons;Probability",110,-1,10)
-    h.GetXaxis().SetRangeUser(-0.5,3.5)
+    h = TH1D("",";#Photo-Electrons;Probability",11000,-100,1000)
+    h.GetXaxis().SetRangeUser(-0.5,xmax)
     #h.GetYaxis().SetRangeUser(0,SPEpeak*1.2)
-    h.GetYaxis().SetRangeUser(0,Pedpeak*1.1)
+    h.GetYaxis().SetRangeUser(0,ymax)
     f1.SetLineColor(1)
     f2.SetLineColor(6)
     f3.SetLineColor(4)
@@ -129,9 +142,9 @@ def main():
     f7.SetLineColor(38)
     h.Draw()
     f1.Draw("Lsame")
-    c.SaveAs("plots/idealplot.pdf")
+    c.SaveAs(f"plots/idealplot_{args.pmean}.pdf")
     h.GetYaxis().SetRangeUser(0,SPEpeak*1.1)
-    c.SaveAs("plots/idealplot_expand.pdf")
+    c.SaveAs(f"plots/idealplot_expand_{args.pmean}.pdf")
     #f2.Draw("Lsame")
     #f3.Draw("Lsame")
     f4.Draw("Lsame")
@@ -144,7 +157,7 @@ def main():
     leg.AddEntry(f4,"R5912Model","L")
     leg.Draw()
 
-    c.SaveAs("plots/testplot.pdf")
+    c.SaveAs(f"plots/testplot_{args.pmean}.pdf")
 
 
     return
@@ -154,6 +167,12 @@ def NphotonDist(Num, PoisMean, QMean, QReso, Qdaq):
 
 def NgammaDist(Num, PoisMean, QMean, QReso, Qdaq, xtrans=0): 
     return  f'TMath::PoissonI({Num},{PoisMean}) * TMath::Gaus(x-{xtrans}, [1]*{QMean}, TMath::Sqrt([1]*[1]*{QMean*QReso**2}+{Qdaq**2}),1)'
+
+def parser():
+    argparser = ArgumentParser()
+    argparser.add_argument('--mpe',type=int,default=4)
+    argparser.add_argument('--pmean',type=float,default=0.5)
+    return argparser.parse_args()
 
 if __name__ == "__main__": 
     gROOT.SetStyle("ATLAS")
