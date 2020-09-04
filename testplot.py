@@ -3,16 +3,22 @@ import numpy as np
 from scipy.stats import poisson, norm
 from scipy.special import comb
 from argparse import ArgumentParser
+import os
 
 def main(): 
     args = parser()
+    os.system('mkdir -p plots/model')
 
     pmean = args.pmean # poisson mean
     qmean = 1 # gain mean 
     qreso = 0.33 # charge resolution 
     qdaq = 0.04 # DAQ resolution 
 
-    mpe = args.mpe # number of p.e. 
+    mpe = int(pmean * 2) # number of p.e. 
+    if args.mpe: 
+        mpe = args.mpe
+    if mpe < 3: 
+        mpe = 5
 
     maxrange = args.pmean * 100.
 
@@ -121,13 +127,16 @@ def main():
     xmax = 3.5
     if args.pmean > 2: 
         xmax = args.pmean*10
+    if args.xmax: 
+        xmax = args.xmax
     ymax = Pedpeak*1.1
     if ymax < f1.GetMaximum()*1.1: 
         ymax = f1.GetMaximum()*1.1
     if ymax < f4.GetMaximum()*1.1:
         ymax = f4.GetMaximum()*1.1
+    if args.ymax: 
+        ymax = args.ymax
     c = TCanvas("c","c",800,600)
-    c.SetGrid()
     c.Draw()
     h = TH1D("",";#Photo-Electrons;Probability",11000,-100,1000)
     h.GetXaxis().SetRangeUser(-0.5,xmax)
@@ -142,9 +151,15 @@ def main():
     f7.SetLineColor(38)
     h.Draw()
     f1.Draw("Lsame")
-    c.SaveAs(f"plots/idealplot_{args.pmean}.pdf")
+    c.SaveAs(f"plots/model/ideal_p{args.pmean}.pdf")
+    h.Draw()
+    f4.Draw("Lsame")
+    c.SaveAs(f"plots/model/model_p{args.pmean}.pdf")
+    h.Draw()
+    f1.Draw("Lsame")
     h.GetYaxis().SetRangeUser(0,SPEpeak*1.1)
-    c.SaveAs(f"plots/idealplot_expand_{args.pmean}.pdf")
+    c.SaveAs(f"plots/model/expand_{args.pmean}.pdf")
+    h.GetXaxis().SetRangeUser(-0.5,4)
     #f2.Draw("Lsame")
     #f3.Draw("Lsame")
     f4.Draw("Lsame")
@@ -157,7 +172,7 @@ def main():
     leg.AddEntry(f4,"R5912Model","L")
     leg.Draw()
 
-    c.SaveAs(f"plots/testplot_{args.pmean}.pdf")
+    c.SaveAs(f"plots/model/cmp_{args.pmean}.pdf")
 
 
     return
@@ -170,8 +185,10 @@ def NgammaDist(Num, PoisMean, QMean, QReso, Qdaq, xtrans=0):
 
 def parser():
     argparser = ArgumentParser()
-    argparser.add_argument('--mpe',type=int,default=4)
+    argparser.add_argument('--mpe',type=int,default=None)
     argparser.add_argument('--pmean',type=float,default=0.5)
+    argparser.add_argument('--xmax',type=float,default=None)
+    argparser.add_argument('--ymax',type=float,default=None)
     return argparser.parse_args()
 
 if __name__ == "__main__": 
