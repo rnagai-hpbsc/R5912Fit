@@ -44,6 +44,7 @@ def main():
     hopt  = TH1D('optq','optq;ADC count [LSB];Entry', 2500, -100,4900)
     hoptq = TH1D('optqcal','optqcal;Charge [pC];Entry', 5000, -1,49)
     hpk   = TH1D('peak','peak;ADC count [LSB];Entry',500,-100,900)
+    h1e7pk   = TH1D('1e7peak','1e7peak;ADC count [LSB];Entry',1000,-100,900)
     havg  = TH1D('avgwf','Averaged Waveform;Sampling Bin;ADC count',nsamples,0,nsamples)
     gHV = TGraph()
     gHV.SetTitle('gHV')
@@ -59,6 +60,9 @@ def main():
         n = gTemp.GetN()
         gTemp.Set(n+1)
         gTemp.SetPoint(n,i,temp[i])
+    gPkInt = TGraph()
+    gPkInt.SetTitle('gPkInt')
+    gPkInt.SetName('gPkInt')
     
     winmin = args.minimum
     winmax = args.minimum + args.window
@@ -69,6 +73,7 @@ def main():
 
     topdir = gDirectory.GetDirectory(gDirectory.GetPath())
     subdir = topdir.mkdir("Waveforms")
+    subtdir = topdir.mkdir("SubtWaveforms")
 
     fltwfs = []
     starttimestamp = timestamps[0]
@@ -80,11 +85,12 @@ def main():
     Mbimped = 50. # ohm impedance
     elecQ = 1.60217662e-19 # elementary charge
 
+    pulseheights = []
     for i in tqdm(range(len(waveforms))):
         waveform = waveforms[i]
         timestamp = timestamps[i]
 
-        baseline_mean = np.mean(waveform[:160])
+        baseline_mean = np.mean(waveform[160:])
         selected = waveform[waveform < np.mean(waveform) + 10]
         reduced_waveform = waveform - baseline_mean
         scale = (nsamples-bsstart)/(winmax-winmin)
@@ -101,21 +107,34 @@ def main():
         hopt.Fill(sum(waveform[maxbin-10:maxbin+10])-20*np.mean(waveform[:maxbin-20]))
         hoptq.Fill(sum(reduced_waveform[maxbin-10:maxbin+10])*Mbcalib/Mbimped/Mbspfq*1.e12)
 
+        pulseheights.append(max(waveform[winmin:winmax])-np.mean(waveform[160:]))
         hpk.Fill(max(waveform[winmin:winmax])-np.mean(waveform[bsstart:nsamples]))
+        h1e7pk.Fill((max(waveform[winmin:winmax])-np.mean(waveform[bsstart:nsamples]))/1.1)
 
+        n = gPkInt.GetN()
+        gPkInt.Set(n+1)
+        gPkInt.SetPoint(n,sum(waveform[maxbin-6:maxbin+8])-14*np.mean(waveform[160:]),max(waveform[winmin:winmax])-np.mean(waveform[160:]))
         if max(waveform) - np.mean(waveform[bsstart:nsamples]) < args.threshold:
             continue
 
         fltwfs.append(waveform)
 
         if args.noeachwf: 
-            h2 = TH1D(f'w{i}','Waveform{i};Sampling Bin;ADC count [LSB]',nsamples,0,nsamples)
+            h2 = TH1D(f'w{i}',f'Waveform{i};Sampling Bin;ADC count [LSB]',nsamples,0,nsamples)
             for j in range(len(waveform)):
                 h2.Fill(j,waveform[j])
             subdir.cd()
             h2.Write()
+            h2 = TH1D(f'sw{i}',f'SubtWaveform{i};Sampling Bin;ADC count [LSB]',nsamples,0,nsamples)
+            for j in range(len(waveform)):
+                h2.Fill(j,waveform[j]-baseline_mean)
+            subtdir.cd()
+            h2.Write()
 
     print('')
+
+    if args.compwf: 
+        savePulseHeightHist(pulseheights,waveforms)
 
     avgfltwfs = np.mean(fltwfs, axis=0)
     for i in range(len(avgfltwfs)): 
@@ -124,10 +143,12 @@ def main():
     topdir.cd()
     gHV.Write()
     gTemp.Write()
+    gPkInt.Write()
     h.Write()
     hopt.Write()
     hoptq.Write()
     hpk.Write()
+    h1e7pk.Write()
     havg.Write()
     hmaxbin.Write()
 
@@ -227,8 +248,10 @@ def main():
     hsubt.SetTitle("hsubt;ADC count [LSB];Data - Fit")
     hsubt.Add(f4,-1)
 
+    obsgain = f4.GetParameter(1)*Mbcalib/Mbimped/Mbspfq/elecQ
+
     print(f'{pmean}, {xtrans}, {qdaq}, {f4.GetParameter(0)}')
-    print(f'Observed gain: {f4.GetParameter(1)*Mbcalib/Mbimped/Mbspfq/elecQ:.5e}')
+    print(f'Observed gain: {f4.GetParameter(1)*Mbcalib/Mbimped/Mbspfq/elecQ:.5e} @ {np.mean(hv):.1f} V')
 
     f4.Write()
     hsubt.Write()
@@ -280,13 +303,18 @@ def main():
 
     c = TCanvas("c1","c1",800,600)
     c.Draw()
+    c.SetLeftMargin(0.13)
+    c.SetBottomMargin(0.12)
     hopt.SetMarkerStyle(20)
     hopt.SetMarkerSize(1)
     hopt.GetXaxis().SetRangeUser(-50,args.xmax)
     hopt.GetYaxis().SetRangeUser(0,(hopt.GetBinContent(hopt.GetXaxis().FindBin(est1mean))+hopt.GetBinError(hopt.GetXaxis().FindBin(est1mean)))*1.25)
+    hopt.GetXaxis().SetTitleOffset(1.15)
+    hopt.GetYaxis().SetTitleOffset(1.15)
     hopt.Draw("PE")
 
-    leg = TLegend(.7,.7,.9,.9)
+    leg = TLegend(.65,.5,.93,.93)
+    leg.SetTextSize(0.04)
     leg.AddEntry(hopt,"Data","PE")
     leg.AddEntry(f4,"Fit","L")
     for i in range(mpe+1): 
@@ -294,7 +322,7 @@ def main():
         NPEs[i].SetLineStyle(2+i)
         NPEs[i].SetLineColor(kAzure+i)
         NPEs[i].Draw("same")
-        leg.AddEntry(NPEs[i],f"{i}PE contribution","L")
+        leg.AddEntry(NPEs[i],f"{i}PE contrib.","L")
     leg.Draw()
     c.SaveAs(f"plots/paper/{ofilename}.pdf")
 
@@ -331,6 +359,67 @@ def main():
     c.Write()
     of.Close()
     f.close()
+
+def savePulseHeightHist(pulseheights, waveforms):
+    npphs = np.array(pulseheights)
+    hilists = []
+    hilists.append(np.where((npphs> 1990) & (npphs< 2010))[0])
+    hilists.append(np.where((npphs> 2990) & (npphs< 3010))[0])
+    hilists.append(np.where((npphs> 3990) & (npphs< 4010))[0])
+    hilists.append(np.where((npphs> 4990) & (npphs< 5010))[0])
+    hilists.append(np.where((npphs> 5950) & (npphs< 6050))[0])
+    hilists.append(np.where((npphs> 6950) & (npphs< 7050))[0])
+    hilists.append(np.where((npphs> 7950) & (npphs< 8050))[0])
+    hilists.append(np.where((npphs> 8950) & (npphs< 9050))[0])
+    hilists.append(np.where((npphs> 9900) & (npphs<10000))[0])
+    hilists.append(np.where((npphs>10900) & (npphs<11000))[0])
+    hilists.append(np.where((npphs>11900) & (npphs<12000))[0])
+    hilists.append(np.where((npphs>12900) & (npphs<13000))[0])
+    hilists.append(np.where((npphs>13900) & (npphs<14000))[0])
+    hilists.append(np.where((npphs>14800)))
+
+    print(hilists)
+    
+    c = TCanvas('c','c',800,600)
+    c.SetLeftMargin(0.13)
+    c.SetBottomMargin(0.12)
+    c.SetGrid()
+    c.Draw()
+
+    hlists = []
+    for i in range(len(hilists)): 
+        for ii in range(len(hilists[i])): 
+            print(type(hilists[i][ii]))
+            if type(hilists[i][ii]) is np.ndarray: 
+                continue
+            waveform = waveforms[hilists[i][ii]]
+            h = TH1D(f'w{hilists[i][ii]}',f'w{hilists[i][ii]};Sampling Bins; ADC Count [LSB]',len(waveform),0,len(waveform))
+            for j in range(len(waveform)): 
+                h.Fill(j,waveform[j])
+            hlists.append(h)
+            break
+
+    leg = TLegend(.7,.3,.93,.93)
+    for i in range(len(hlists)):
+        hlists[i].SetLineColor(int(51+i*4))
+        leg.AddEntry(hlists[i],f'Pulse height: {i*1000+2000}','L')
+        if i==0: 
+            tsize = 0.042
+            hlists[i].GetXaxis().SetTitleSize(tsize)
+            hlists[i].GetYaxis().SetTitleSize(tsize)
+            hlists[i].GetXaxis().SetLabelSize(tsize)
+            hlists[i].GetYaxis().SetLabelSize(tsize)
+            hlists[i].GetXaxis().SetTitleOffset(1.15)
+            hlists[i].GetYaxis().SetTitleOffset(1.5)
+            hlists[i].GetXaxis().SetRangeUser(100,180)
+            hlists[i].GetYaxis().SetRangeUser(0,17000)
+            hlists[i].Draw("hist")
+        else: 
+            hlists[i].Draw("histsame")
+        leg.Draw()
+
+    c.SaveAs('pulseheight.pdf')
+
 
 def NphotonDist(Num, PoisMean, QMean, QReso, Qdaq, xtrans=0): 
     return  f'TMath::PoissonI({Num},{PoisMean}) * TMath::Gaus(x-{xtrans}, [1]*{QMean}, TMath::Sqrt([1]*[1]*{QMean}*{QReso**2}+{Qdaq**2}),1)'
@@ -393,6 +482,7 @@ def parser():
     argparser.add_argument('--mpe',type=int,default=4)
     argparser.add_argument('--laser',type=int,default=None)
     argparser.add_argument('--poisfix',action='store_true')
+    argparser.add_argument('--compwf',action='store_true')
 
     return argparser.parse_args()
 
