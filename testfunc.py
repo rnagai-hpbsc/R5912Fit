@@ -51,7 +51,7 @@ def polyaFunc(x,pmean,gain,qreso,elfluc,p1,b,N,tnum):
         result += poisson_term * (p1*polya_term + (1-p1)*norm_term)
     return result
 
-pmean = 0.3
+pmean = 0.1
 gain = 1
 qreso = 0.3
 elfluc = 0.05
@@ -89,10 +89,14 @@ def ideal():
 def furry():
     ydata = furryFunc(xdata,pmean,gain,qreso,elfluc,p1,N,NPE)
     plt.figure(figsize=(5,3.75))
+    plt.subplots_adjust(left=0.15, right=0.97, bottom=0.15, top=0.97)
     plt.plot(xdata,ydata,color='blue',lw=2,label='total')
+    for i in range(NPE):
+        pterm = poisson.pmf(i,pmean)
+        plt.plot(xdata,pterm*p1*ufurry(xdata,i*gain,np.sqrt(i*qreso**2+elfluc**2)),ls=':')
+        plt.plot(xdata,pterm*(1-p1)*norm.pdf(xdata,i*gain,np.sqrt(i*qreso**2+elfluc**2)),ls=':')
     plt.xlabel('Number of photo-electrons')
     plt.ylabel('Probability')
-    plt.subplots_adjust(left=0.15, right=0.97, bottom=0.15, top=0.97)
     plt.grid()
     plt.legend()
     #plt.savefig('plots/whole.pdf')
@@ -104,10 +108,14 @@ def furry():
 def polya():
     ydata = polyaFunc(xdata,pmean,gain,qreso,elfluc,p1,b,N,NPE)
     plt.figure(figsize=(5,3.75))
+    plt.subplots_adjust(left=0.15, right=0.97, bottom=0.15, top=0.97)
     plt.plot(xdata,ydata,color='blue',lw=2,label='total')
+    for i in range(NPE):
+        pterm = poisson.pmf(i,pmean)
+        plt.plot(xdata,pterm*p1*upolya(xdata,i*gain,np.sqrt(i*qreso**2+elfluc**2),b),ls=':')
+        plt.plot(xdata,pterm*(1-p1)*norm.pdf(xdata,i*gain,np.sqrt(i*qreso**2+elfluc**2)),ls=':')
     plt.xlabel('Number of photo-electrons')
     plt.ylabel('Probability')
-    plt.subplots_adjust(left=0.15, right=0.97, bottom=0.15, top=0.97)
     plt.grid()
     plt.legend()
     #plt.savefig('plots/whole.pdf')
