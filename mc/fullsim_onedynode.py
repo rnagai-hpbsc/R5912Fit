@@ -61,16 +61,17 @@ def main(pois,nevt,hv,preso,qreso,nph,bs,linear):
     for key in data:
         data_gaus[key] = [np.random.normal(loc=n,scale=preso/100) for n in np.array(data[key])/hv]
 
-    h_max = 1.2 * np.max(data_gaus['all'])
-    h_min = 1.2 * np.min(data_gaus['all'])
-    n_bins = 500#int((h_max-h_min+1)*10)
+    h_max = int(1.2 * np.max(data_gaus['all']))
+    h_min = int(1.2 * np.min(data_gaus['all']))
+
+    n_bins = int((h_max - h_min)*hv)
 
     y,    x, _ = plt.hist(data_gaus['all'],bins=n_bins,range=(h_min,h_max),histtype='step',label='All')
     y_bs, _, _ = plt.hist(data_gaus['bs'],bins=n_bins,range=(h_min,h_max),histtype='step',label='BS')
     plt.plot([(x[i+1]+x[i])/2 for i in range(len(x)-1)], y-y_bs)
     plt.legend()
     if linear:
-        if np.isnan(nph): plt.ylim(0,np.max(y)*pois*(1-qreso)*np.sqrt(2*np.pi)*qreso)
+        if np.isnan(nph): plt.ylim(0,np.max(y)*pois*(1-qreso)/np.sqrt(2*np.pi)/2)
     else:
         plt.yscale('log')
     plt.show()
