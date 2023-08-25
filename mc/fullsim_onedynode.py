@@ -36,7 +36,8 @@ def dynode_SEE(
 @click.option('--nph',type=float,default=np.nan,help='Number of Photons instead of Poisson (default=None)')
 @click.option('--bs',type=float,default=0.0001,help='back scatter probability (default=0.0001)')
 @click.option('--linear',is_flag=True)
-def main(pois,nevt,hv,preso,qreso,nph,bs,linear):
+@click.option('--absolute',is_flag=True)
+def main(pois,nevt,hv,preso,qreso,nph,bs,linear,absolute):
     data = {'all':[], 'bs':[]}
     data_gaus = {'all':[], 'bs':[]}
     # cathode-dynode distance 
@@ -46,29 +47,30 @@ def main(pois,nevt,hv,preso,qreso,nph,bs,linear):
     else:
         pois_pdf = np.zeros(nevt) + int(nph)
 
+    norm = 1 if absolute else hv
+
     for n_ph in tqdm(pois_pdf,leave=False):
         n_pe = 0
-        n_pe_bs = np.nan
+        is_bs = False
         for j in range(int(n_ph)):
             n_pe_, outE = dynode_SEE(i_energy=hv,prob_bs=bs,qreso=qreso)
             n_pe += n_pe_
-            if outE < 0 : 
-                if np.isnan(n_pe_bs): n_pe_bs = 0
-                n_pe_bs += n_pe_
+            if outE < 0 : is_bs = True
         data['all'].append(n_pe)
-        data['bs'].append(n_pe_bs)
+        data['bs'].append(is_bs)
 
-    for key in data:
-        data_gaus[key] = [np.random.normal(loc=n,scale=preso/100) for n in np.array(data[key])/hv]
+    data_gaus['all'] = [np.random.normal(loc=n,scale=preso/100*hv/norm) for n in np.array(data['all'])/norm]
 
-    h_max = int(1.2 * np.max(data_gaus['all']))
-    h_min = int(1.2 * np.min(data_gaus['all']))
+    h_max = int(2 * 1.2 * np.max(data_gaus['all']))/2
+    h_min = int(2 * 1.2 * np.min(data_gaus['all']))/2
+   
+    if h_min >= 0: h_min = -0.5
 
-    n_bins = int((h_max - h_min)*hv)
+    n_bins = int((h_max - h_min)*norm/2)
 
     y,    x, _ = plt.hist(data_gaus['all'],bins=n_bins,range=(h_min,h_max),histtype='step',label='All')
-    y_bs, _, _ = plt.hist(data_gaus['bs'],bins=n_bins,range=(h_min,h_max),histtype='step',label='BS')
-    plt.plot([(x[i+1]+x[i])/2 for i in range(len(x)-1)], y-y_bs)
+    y_bs, _, _ = plt.hist(np.array(data_gaus['all'])[np.array(data['bs'])==True],bins=n_bins,range=(h_min,h_max),histtype='step',label='BS')
+    plt.plot([(x[i+1]+x[i])/2 for i in range(len(x)-1)], y-y_bs,lw=1)
     plt.legend()
     if linear:
         if np.isnan(nph): plt.ylim(0,np.max(y)*pois*(1-qreso)/np.sqrt(2*np.pi)/2)
